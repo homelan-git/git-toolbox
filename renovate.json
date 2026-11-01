@@ -1,0 +1,63 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "docker:pinDigests"
+  ],
+  "dependencyDashboardApproval": false,
+  "platformAutomerge": true,
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Update Git Credential Manager version and SHA256 checksum",
+      "managerFilePatterns": [
+        "/^Containerfile$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+) versioning=(?<versioning>\\S+)\\s+ARG GCM_VERSION=(?<currentValue>\\S+)\\s+ARG GCM_SHA256=(?<currentDigest>[a-f0-9]{64})"
+      ]
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Group Git Credential Manager version and checksum updates",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchDatasources": [
+        "github-release-attachments"
+      ],
+      "matchPackageNames": [
+        "git-ecosystem/git-credential-manager"
+      ],
+      "groupName": "Git Credential Manager",
+      "automerge": true
+    },
+    {
+      "description": "Automatically merge Fedora Toolbox major upgrades",
+      "matchManagers": [
+        "dockerfile"
+      ],
+      "matchPackageNames": [
+        "registry.fedoraproject.org/fedora-toolbox"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "automerge": true
+    },
+    {
+      "description": "Automatically merge Fedora Toolbox image digest updates",
+      "matchManagers": [
+        "dockerfile"
+      ],
+      "matchPackageNames": [
+        "registry.fedoraproject.org/fedora-toolbox"
+      ],
+      "matchUpdateTypes": [
+        "digest"
+      ],
+      "automerge": true
+    }
+  ]
+}

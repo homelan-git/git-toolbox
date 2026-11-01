@@ -1,0 +1,27 @@
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Local container images and build output
+*.tar
+*.tar.gz
+*.oci
+*.img
+
+# Test artifacts
+*.log
+*.tmp
+*.bak
+coverage/
+
+# Editor and IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Operating system files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,4 @@
+#!/bin/bash
+
+exec toolbox run --container git-toolbox \
+    /usr/local/bin/git-wrapper "$@"

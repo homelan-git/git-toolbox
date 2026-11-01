@@ -1,0 +1,164 @@
+
+name: Build Git Toolbox
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 5 * * 1"
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    name: Build image
+    runs-on: ubuntu-latest
+
+    outputs:
+      fedora_version: ${{ steps.fedora.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Detect Fedora version
+        id: fedora
+        run: |
+          VERSION="$(
+            sed -nE \
+              's|^FROM registry\.fedoraproject\.org/fedora-toolbox:([0-9]+)(@sha256:[a-f0-9]+)?$|\1|p' \
+              Containerfile
+          )"
+
+          test -n "$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Containerfile
+          platforms: linux/amd64
+          tags: git-toolbox:test
+          outputs: type=docker,dest=/tmp/git-toolbox.tar
+          pull: true
+          no-cache: ${{ github.event_name == 'schedule' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Upload image
+        uses: actions/upload-artifact@v4
+        with:
+          name: git-toolbox-image
+          path: /tmp/git-toolbox.tar
+          retention-days: 1
+
+  test:
+    name: Test image
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Download image
+        uses: actions/download-artifact@v4
+        with:
+          name: git-toolbox-image
+          path: /tmp
+
+      - name: Load image
+        run: docker load -i /tmp/git-toolbox.tar
+
+      - name: Test installed tools
+        run: |
+          docker run --rm git-toolbox:test sh -ec '
+            git --version
+            git-credential-manager --version
+            gpg --version
+            pass --version
+            pinentry --version
+          '
+
+      - name: Test GCM installation
+        run: |
+          docker run --rm git-toolbox:test sh -ec '
+            test -x /usr/local/bin/git-credential-manager
+            git-credential-manager --version
+          '
+
+      - name: Test Git wrapper
+        run: |
+          docker run --rm git-toolbox:test sh -ec '
+            test -x /usr/local/bin/git-wrapper
+            /usr/local/bin/git-wrapper --version
+          '
+
+  push:
+    name: Publish to GHCR
+    runs-on: ubuntu-latest
+    needs: [build, test]
+    if: github.event_name != 'pull_request'
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Download image
+        uses: actions/download-artifact@v4
+        with:
+          name: git-toolbox-image
+          path: /tmp
+
+      - name: Load image
+        run: docker load -i /tmp/git-toolbox.tar
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare image tags
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
+          VERSION="${{ needs.build.outputs.fedora_version }}"
+
+          docker tag git-toolbox:test "$IMAGE:sha-${GITHUB_SHA::7}"
+
+          if [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
+            docker tag git-toolbox:test "$IMAGE:$VERSION"
+            docker tag git-toolbox:test "$IMAGE:latest"
+          fi
+
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            RELEASE="${GITHUB_REF_NAME#v}"
+            docker tag git-toolbox:test "$IMAGE:$RELEASE"
+          fi
+
+      - name: Push image
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}"
+          VERSION="${{ needs.build.outputs.fedora_version }}"
+
+          docker push "$IMAGE:sha-${GITHUB_SHA::7}"
+
+          if [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
+            docker push "$IMAGE:$VERSION"
+            docker push "$IMAGE:latest"
+          fi
+
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            RELEASE="${GITHUB_REF_NAME#v}"
+            docker push "$IMAGE:$RELEASE"
+          fi
