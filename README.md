@@ -1,40 +1,45 @@
-
 # Git Toolbox
 
 A dedicated Fedora Toolbox image for Git development on Fedora CoreOS.
 
-The image provides Git, Git Credential Manager (GCM), GnuPG, Pass, Pinentry and OpenSSH client utilities.
+The image provides a complete Git development environment based on Fedora Toolbox, including Git, Git Credential Manager (GCM), Git LFS, git-filter-repo, git-revise, git-delta and supporting authentication tools.
 
-It keeps development tools isolated from the immutable Fedora CoreOS host while preserving user configuration, SSH access and GPG credentials.
+It keeps Git development tools isolated from the immutable Fedora CoreOS host while preserving the user's configuration, SSH access, GPG keys and credentials.
 
 The primary installation method uses the published image from GitHub Container Registry (GHCR).
 
-Local image builds are intended for development, short build tests and functional verification.
+Local image builds are intended for development, build verification and functional testing.
 
 ## Features
 
-- Fedora Toolbox base image
-- Support for Fedora Toolbox images matching Fedora CoreOS releases
+- Fedora Toolbox base image matching Fedora CoreOS releases
 - Git from Fedora repositories
 - Git Credential Manager (GCM) from official upstream releases
+- Git LFS for large file management
+- git-filter-repo for rewriting Git history
+- git-revise for editing and revising commits
+- git-delta for improved Git diffs and interactive output
 - GnuPG and GPG-backed credential storage
 - Pass password manager
 - Pinentry for terminal-based GPG authentication
 - OpenSSH client
+- Host-side Git wrapper for transparent toolbox execution
+- Container-side Git wrapper with GPG terminal support
 - Automated builds using GitHub Actions
 - Image publishing to GitHub Container Registry (GHCR)
 - Dependency updates using Renovate
-- Automatic dependency updates and merging
 - SHA256 verification of downloaded GCM releases
-- Weekly image rebuilds
+- Automated image rebuilds
 
 ## Architecture
 
-Git runs exclusively inside the Fedora Toolbox container.
+Git runs exclusively inside the dedicated Fedora Toolbox container.
 
-The Fedora CoreOS host provides a small Git wrapper to execute Git inside the toolbox.
+The Fedora CoreOS host provides a small Git wrapper that transparently executes Git inside the toolbox.
 
-Toolbox shares the user's home directory between host and container. This allows Git, GCM, GnuPG and Pass to use the same configuration and credentials without storing them in the container image.
+The wrapper allows Git commands to be invoked directly from the host without requiring a Git installation on the host itself.
+
+Toolbox shares the user's home directory between host and container. This allows Git, GCM, GnuPG, Pass and SSH to use the same configuration and credentials without storing personal data in the container image.
 
 ### Host and container responsibilities
 
@@ -42,6 +47,10 @@ Toolbox shares the user's home directory between host and container. This allows
 
 - Git
 - Git Credential Manager
+- Git LFS
+- git-filter-repo
+- git-revise
+- git-delta
 - GnuPG
 - Pass
 - Pinentry
@@ -54,22 +63,54 @@ Toolbox shares the user's home directory between host and container. This allows
 - GPG agent configuration
 - Pass password store
 - SSH private keys and configuration
+- Host-side Git wrapper
 
 These directories are accessible from inside the toolbox through the shared home directory.
 
-No personal credentials or private keys are included in the container image.
+No personal credentials, private keys or password-store data are included in the container image.
 
 Recreating or updating the toolbox does not remove or reset the user's configuration and credentials.
 
 | Component | Fedora CoreOS host | Toolbox container |
 |---|---|---|
 | Git executable | — | `/usr/bin/git` |
-| Git wrapper | `~/.local/bin/git` | `/usr/local/bin/git-wrapper` |
+| Host Git wrapper | `~/.local/bin/git` | — |
+| Container Git wrapper | — | `/usr/local/bin/git-wrapper` |
 | Git Credential Manager | — | `/usr/local/bin/git-credential-manager` |
 | Git configuration | `~/.gitconfig` | `~/.gitconfig` (shared) |
 | GPG configuration and keys | `~/.gnupg/` | `~/.gnupg/` (shared) |
 | Pass password store | `~/.password-store/` | `~/.password-store/` (shared) |
 | SSH configuration and keys | `~/.ssh/` | `~/.ssh/` (shared) |
+
+### Command execution
+
+The execution flow is:
+
+```text
+Fedora CoreOS host
+       |
+       | git status
+       v
+~/.local/bin/git
+       |
+       | toolbox run --container git-toolbox
+       v
+/usr/local/bin/git-wrapper
+       |
+       | GPG_TTY configuration
+       v
+/usr/bin/git
+       |
+       +---- Git Credential Manager
+       |
+       +---- GPG / Pass
+       |
+       +---- SSH
+```
+
+The host wrapper forwards all arguments to the container-side Git wrapper.
+
+The container wrapper configures `GPG_TTY` when running interactively. This ensures that GPG and Pinentry can access the correct terminal, including during SSH sessions.
 
 ## Prerequisites
 
@@ -78,10 +119,9 @@ A working Fedora CoreOS installation with Podman and Toolbox support is required
 The following host environment is expected:
 
 - A regular user account with a properly configured home directory.
-- The standard Fedora CoreOS Toolbox.
-- An existing Git configuration or the information required to create one.
+- Toolbox support.
 - An existing GPG key pair suitable for credential encryption.
-- An initialized Pass password store.
+- An initialized Pass password store, if GPG-backed credential storage is used.
 - SSH keys and configuration, if SSH authentication is required.
 
 ### Required host configuration
@@ -96,7 +136,7 @@ The following host environment is expected:
 
 ### Git identity
 
-The Git identity is configured inside the toolbox and stored in the shared global Git configuration.
+The Git identity is configured in the shared global Git configuration.
 
 Example:
 
@@ -104,6 +144,8 @@ Example:
 git config --global user.name "Your Name"
 git config --global user.email "your.email@example.com"
 ```
+
+The configuration is stored on the host and is available inside the toolbox.
 
 ### GPG keys
 
@@ -145,9 +187,9 @@ All personal data remains on the host and is accessible inside the toolbox throu
 
 ## Initial Repository Checkout
 
-For the initial checkout of this repository, use Git from the standard Fedora CoreOS Toolbox.
+For the initial checkout of this repository, use the standard Fedora CoreOS Toolbox.
 
-The standard Toolbox already provides the Git environment needed to clone the repository before the dedicated Git Toolbox has been installed.
+The standard Toolbox provides the Git environment needed to clone the repository before the dedicated Git Toolbox has been installed.
 
 Create a working directory:
 
@@ -169,29 +211,29 @@ Enter the repository:
 cd ~/Projects/git-toolbox
 ```
 
-The initial repository checkout and subsequent repository maintenance can use the standard Fedora CoreOS Toolbox.
-
-Once the dedicated Git Toolbox has been installed, Git operations for normal development can also use the new host Git wrapper.
+Once the dedicated Git Toolbox has been installed, normal Git operations can use the host-side Git wrapper.
 
 ## Installation on Fedora CoreOS
 
 The primary installation method uses the published GHCR image.
 
+The image tags correspond to Fedora major versions. For example, the `44` tag is intended for Fedora CoreOS 44.
+
 ### 1. Pull the image
 
-For a public GHCR repository:
+For Fedora CoreOS 44:
+
+```bash
+podman pull ghcr.io/homelan-git/git-toolbox:44
+```
+
+Alternatively, use the `latest` tag:
 
 ```bash
 podman pull ghcr.io/homelan-git/git-toolbox:latest
 ```
 
-The tag represents the Fedora Toolbox major version.
-
-For Fedora CoreOS 45, use:
-
-```bash
-podman pull ghcr.io/homelan-git/git-toolbox:45
-```
+For reproducible installations, prefer the explicit Fedora major-version tag.
 
 ### 2. Create the toolbox
 
@@ -203,26 +245,18 @@ toolbox create \
     git-toolbox
 ```
 
-For Fedora CoreOS 45:
-
-```bash
-toolbox create \
-    --image ghcr.io/homelan-git/git-toolbox:45 \
-    git-toolbox
-```
-
 The toolbox shares the user's home directory with the host.
 
 ### 3. Configure Git Credential Manager
 
-Run the GCM configuration command once inside the toolbox:
+Configure GCM once inside the toolbox:
 
 ```bash
 toolbox run --container git-toolbox \
     git-credential-manager configure
 ```
 
-This configures Git to use GCM as its credential helper.
+This configures Git to use Git Credential Manager as its credential helper.
 
 Because the home directory is shared, the global Git configuration is written to the host's `~/.gitconfig`.
 
@@ -231,6 +265,13 @@ Configure GPG as the credential store:
 ```bash
 toolbox run --container git-toolbox \
     git config --global credential.credentialStore gpg
+```
+
+Enable repository-specific credential lookup:
+
+```bash
+toolbox run --container git-toolbox \
+    git config --global credential.useHttpPath true
 ```
 
 ### 4. Configure Git identity
@@ -243,13 +284,6 @@ toolbox run --container git-toolbox \
 
 toolbox run --container git-toolbox \
     git config --global user.email "your.email@example.com"
-```
-
-Enable repository-specific credential lookup:
-
-```bash
-toolbox run --container git-toolbox \
-    git config --global credential.useHttpPath true
 ```
 
 ### 5. Verify GPG and Pass
@@ -274,11 +308,51 @@ Verify the password store:
 toolbox run --container git-toolbox pass
 ```
 
-### 6. Install the host Git wrapper
+## Git Configuration
 
-The repository provides the host wrapper in `bin/git`.
+Git configuration remains on the host and is accessible inside the toolbox through the shared home directory.
 
-Install it:
+### Git Delta
+
+The image includes [Git Delta](https://github.com/dandavison/delta) as the default Git pager.
+
+The following system-wide settings are configured in the image (`/etc/gitconfig`):
+
+```ini
+[core]
+    pager = delta
+
+[interactive]
+    diffFilter = delta --color-only
+
+[delta]
+    navigate = true
+    line-numbers = true
+    side-by-side = true
+```
+
+This provides enhanced syntax-highlighted diffs, side-by-side comparisons, line numbers and navigation between diff sections.
+
+No additional configuration is required on the host.
+
+These settings are defined at system level inside the container and apply to all users unless overridden by repository or user configuration.
+
+### Host Git wrapper
+
+The host does not need Git installed for this setup.
+
+The wrapper at `~/.local/bin/git` forwards all arguments to Git inside the dedicated toolbox.
+
+The repository provides the following wrapper in `bin/git`:
+
+```bash
+#!/bin/bash
+
+exec toolbox run --container git-toolbox \
+    /usr/local/bin/git-wrapper "$@"
+```
+
+Install it with:
 
 ```bash
 install -Dm0755 bin/git ~/.local/bin/git
@@ -296,62 +370,6 @@ Reload the shell configuration:
 
 ```bash
 source ~/.bashrc
-```
-
-The wrapper forwards Git commands to the dedicated toolbox.
-
-The host does not need Git installed.
-
-### 7. Verify the installation
-
-Check Git through the host wrapper:
-
-```bash
-git --version
-```
-
-Check GCM:
-
-```bash
-toolbox run --container git-toolbox \
-    git-credential-manager --version
-```
-
-Check GPG:
-
-```bash
-toolbox run --container git-toolbox \
-    gpg --list-secret-keys
-```
-
-Check Pass:
-
-```bash
-toolbox run --container git-toolbox pass
-```
-
-The installation is complete.
-
-Git commands invoked on the host are executed inside the dedicated toolbox.
-
-
-## Git Configuration
-
-Git configuration remains on the host and is accessible inside the toolbox through the shared home directory.
-
-### Host Git wrapper
-
-The host does not need Git installed for this setup.
-
-The wrapper at `~/.local/bin/git` forwards all arguments to Git inside the toolbox.
-
-The repository provides the following wrapper in `bin/git`:
-
-```bash
-#!/bin/bash
-
-exec toolbox run --container git-toolbox \
-    /usr/local/bin/git-wrapper "$@"
 ```
 
 ### Container Git wrapper
@@ -390,7 +408,7 @@ Configuration details:
 - `useHttpPath = true`: Includes the repository path when looking up credentials.
 - `credentialStore = gpg`: Stores credentials encrypted using GPG.
 
-GCM uses Pass-compatible encrypted storage for its GPG credential store.
+GCM uses GPG-backed credential storage and the existing GPG environment.
 
 ### Removing an old GCM configuration
 
@@ -400,35 +418,198 @@ If an older absolute GCM helper path is configured, remove it:
 git config --global --unset-all credential.helper
 ```
 
-Then run:
+Then configure GCM again inside the toolbox:
 
 ```bash
 toolbox run --container git-toolbox \
     git-credential-manager configure
 ```
 
-Set the credential store again:
+Set the credential store:
 
 ```bash
-toolbox run --container git-toolbox \
-    git config --global credential.credentialStore gpg
+git config --global credential.credentialStore gpg
+```
+
+Enable repository-specific credential lookup:
+
+```bash
+git config --global credential.useHttpPath true
 ```
 
 ### Verify the configuration
 
 ```bash
-git config --global --get-all credential.helper
+git config --show-origin --get-all credential.helper
 git config --global --get credential.useHttpPath
 git config --global --get credential.credentialStore
 ```
 
-Expected output:
+Expected values:
 
 ```text
 manager
 true
 gpg
 ```
+
+The helper may be displayed with its configuration origin and additional formatting.
+
+## Git Tools
+
+The image includes several Git-specific tools that extend the standard Git functionality.
+
+All tools are installed inside the container and are available through the shared Git environment.
+
+### Git
+
+Git is installed from Fedora repositories.
+
+Check the version:
+
+```bash
+git --version
+```
+
+Git commands invoked through the host wrapper are executed inside the dedicated toolbox.
+
+### Git Credential Manager
+
+Git Credential Manager handles authentication against Git hosting services such as GitHub.
+
+Check the version:
+
+```bash
+toolbox run --container git-toolbox \
+    git-credential-manager --version
+```
+
+Check the configured helper:
+
+```bash
+git config --show-origin --get-all credential.helper
+```
+
+GCM is installed at:
+
+```text
+/usr/local/bin/git-credential-manager
+```
+
+### Git LFS
+
+Git LFS provides support for storing large files outside the regular Git object database.
+
+Check the version:
+
+```bash
+git lfs version
+```
+
+Initialize Git LFS for the current user:
+
+```bash
+git lfs install
+```
+
+Example: Track binary assets:
+
+```bash
+git lfs track "*.psd"
+git lfs track "*.zip"
+```
+
+The resulting `.gitattributes` file should be committed to the repository.
+
+Inspect tracked files:
+
+```bash
+git lfs ls-files
+```
+
+### git-filter-repo
+
+`git-filter-repo` is used to rewrite Git history.
+
+Typical use cases include:
+
+- Removing sensitive information from historical commits.
+- Replacing author and committer identities.
+- Removing unwanted files from repository history.
+- Splitting or restructuring repositories.
+- Cleaning up historical repository content.
+
+Check the version:
+
+```bash
+git filter-repo --version
+```
+
+Example: Rewrite historical author identities using a mailmap:
+
+```bash
+git filter-repo --force --mailmap mailmap.txt
+```
+
+**Important:** History rewriting changes commit IDs and invalidates existing references to rewritten commits.
+
+Before rewriting a repository, create a backup:
+
+```bash
+git bundle create ../repository-before-rewrite.bundle --all
+```
+
+After rewriting, verify the resulting history before force-pushing to the remote repository.
+
+### git-revise
+
+`git-revise` provides an alternative workflow for editing and revising commits.
+
+It is useful for:
+
+- Modifying earlier commits.
+- Reorganizing commit history.
+- Editing commit messages.
+- Splitting and combining commits.
+- Preparing a clean commit series before pushing.
+
+Check the version:
+
+```bash
+git revise --version
+```
+
+Consult the built-in help for available operations:
+
+```bash
+git revise --help
+```
+
+### git-delta
+
+`git-delta` provides improved syntax highlighting and navigation for Git diffs.
+
+Check the version:
+
+```bash
+delta --version
+```
+
+Configure Delta for the current user:
+
+```bash
+git config --global core.pager delta
+git config --global interactive.diffFilter "delta --color-only"
+git config --global delta.navigate true
+git config --global delta.line-numbers true
+git config --global delta.side-by-side true
+```
+
+These settings belong in the user's global Git configuration.
+
+They must not be written to `/etc/gitconfig` unless the container is deliberately configured for privileged system-wide configuration.
+
+The resulting configuration is stored in the shared `~/.gitconfig`.
 
 ## GPG Configuration
 
@@ -465,6 +646,8 @@ The Fedora `pinentry` package provides terminal-based Pinentry support.
 
 Pinentry is used by the GPG agent to request passphrases, including during remote SSH sessions.
 
+The container-side Git wrapper sets `GPG_TTY` for interactive Git operations.
+
 ## Password Store
 
 Pass stores encrypted credentials in:
@@ -487,7 +670,7 @@ pass init YOUR_GPG_KEY_ID
 pass
 ```
 
-GCM uses this existing Pass store when configured with:
+GCM uses GPG-backed credential storage when configured with:
 
 ```ini
 [credential]
@@ -508,39 +691,9 @@ SSH keys and configuration remain on the host in:
 
 The shared home directory makes them available inside the toolbox.
 
-## Local Development and Testing
-
-Local builds are intended for short development cycles, build verification and functional testing.
-
-The primary usage is the published GHCR image.
-
-### Build locally
-
-From the repository root:
-
-```bash
-podman build \
-    -t localhost/git-toolbox:local \
-    -f Containerfile .
-```
-
-### Test locally
-
-The integration test script creates a temporary Toolbox container using the locally built image.
-
-Run:
-
-```bash
-./tests/test-toolbox.sh
-```
-
-The test container uses `localhost/git-toolbox:local`; no permanent toolbox installation is required.
-
-The host must have an initialized GPG key and Pass password store for the integration tests to pass.
-
 ## Dependency Management
 
-Renovate monitors the Containerfile for dependency updates.
+Renovate monitors the Containerfile and repository configuration for dependency updates.
 
 The following dependencies are managed:
 
@@ -550,6 +703,8 @@ The following dependencies are managed:
 - GCM SHA256 checksum
 
 GCM version and checksum are maintained together to ensure that downloaded release artifacts are verified against the correct digest.
+
+Fedora packages are installed from the configured Fedora repositories during image builds.
 
 Renovate submits pull requests for dependency updates.
 
@@ -567,13 +722,19 @@ The toolbox image can be updated independently of the Fedora CoreOS host.
 
 ### Update the image
 
-Pull the latest image:
+Pull the latest image for the current Fedora major version:
 
 ```bash
-podman pull ghcr.io/homelan-git/git-toolbox:latest
+podman pull ghcr.io/homelan-git/git-toolbox:44
 ```
 
 ### Recreate the toolbox
+
+Stop the existing container if necessary:
+
+```bash
+podman stop git-toolbox
+```
 
 Remove the existing toolbox:
 
@@ -585,7 +746,7 @@ Create it again:
 
 ```bash
 toolbox create \
-    --image ghcr.io/homelan-git/git-toolbox:latest \
+    --image ghcr.io/homelan-git/git-toolbox:44 \
     git-toolbox
 ```
 
@@ -599,10 +760,12 @@ The container image can therefore be replaced without reinstalling Git configura
 
 When moving to a newer Fedora CoreOS release, use the corresponding Fedora Toolbox image.
 
-For example on Fedora CoreOS 44, after upgrading the host to Fedora CoreOS 45:
+For example, after upgrading the host from Fedora CoreOS 44 to Fedora CoreOS 45:
 
 ```bash
 podman pull ghcr.io/homelan-git/git-toolbox:45
+
+podman stop git-toolbox
 
 toolbox rm git-toolbox
 
@@ -611,7 +774,7 @@ toolbox create \
     git-toolbox
 ```
 
-The Git wrapper remains unchanged.
+The host Git wrapper remains unchanged.
 
 ## Repository Structure
 
@@ -654,6 +817,24 @@ git-toolbox/
 - [Git Credential Manager](https://github.com/git-ecosystem/git-credential-manager)
 - [Installation instructions](https://github.com/git-ecosystem/git-credential-manager/blob/main/README.md)
 - [Configuration reference](https://github.com/git-ecosystem/git-credential-manager/blob/main/docs/configuration.md)
+
+### Git LFS
+
+- [Git LFS documentation](https://git-lfs.com/)
+- [Git LFS repository](https://github.com/git-lfs/git-lfs)
+
+### git-filter-repo
+
+- [git-filter-repo repository](https://github.com/newren/git-filter-repo)
+- [git-filter-repo documentation](https://github.com/newren/git-filter-repo/blob/main/Documentation/git-filter-repo.txt)
+
+### git-revise
+
+- [git-revise repository](https://github.com/mystor/git-revise)
+
+### git-delta
+
+- [git-delta repository](https://github.com/dandavison/delta)
 
 ### Renovate
 
