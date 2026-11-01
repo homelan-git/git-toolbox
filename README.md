@@ -639,6 +639,21 @@ Example:
 default-cache-ttl 3600
 max-cache-ttl 28800
 ```
+Both settings specify cache durations in seconds:
+
+| Setting | Seconds | Minutes | Meaning |
+|---|---:|---:|---|
+| `default-cache-ttl` | 3,600 | 60 min | Default duration for caching a passphrase after use |
+| `max-cache-ttl` | 28,800 | 480 min (8 h) | Maximum lifetime of a cached passphrase, regardless of subsequent use |
+
+**Important distinction:**
+
+- `default-cache-ttl`: The cache timeout is refreshed when the cached passphrase is used. After 60 minutes without use, it expires.
+- `max-cache-ttl`: Sets the absolute maximum lifetime of the cached passphrase. Even if it is used repeatedly, it expires after 8 hours.
+
+The maximum lifetime therefore takes precedence over repeated cache refreshes.
+
+These settings balance convenience and security by avoiding frequent passphrase prompts while ensuring that cached credentials eventually expire.
 
 ### Pinentry
 
