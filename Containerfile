@@ -10,6 +10,7 @@ LABEL org.opencontainers.image.description="Git development toolbox for Fedora C
 
 RUN dnf5 install -y \
     git \
+    git-filter-repo git-lfs git-revise git-delta \
     gnupg2 \
     pass \
     pgp-tools \
