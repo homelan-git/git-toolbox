@@ -35,6 +35,12 @@ RUN curl \
     && tar -xzf /tmp/gcm.tar.gz -C /usr/local/bin \
     && rm /tmp/gcm.tar.gz
 
+RUN git config --system core.pager delta \
+    && git config --system interactive.diffFilter "delta --color-only" \
+    && git config --system delta.navigate true \
+    && git config --system delta.line-numbers true \
+    && git config --system delta.side-by-side true
+
 COPY bin/git-wrapper /usr/local/bin/git-wrapper
 RUN chmod 0755 /usr/local/bin/git-wrapper
 
