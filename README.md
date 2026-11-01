@@ -199,7 +199,7 @@ For Fedora CoreOS 44:
 
 ```bash
 toolbox create \
-    --image ghcr.io/homelan-git/git-toolbox:latest \
+    --image ghcr.io/homelan-git/git-toolbox:44 \
     git-toolbox
 ```
 
